@@ -67,7 +67,7 @@ export const OnChainMixin = (superclass) => class extends superclass {
   }
 
   // amount in sats
-  async onChainPay({ address, amount, memo, isSendAll }: IOnChainPayment): Promise<ISuccess> {
+  async onChainPay({ address, amount, memo, isSendAll = false }: IOnChainPayment): Promise<ISuccess> {
     let onchainLogger = this.logger.child({ topic: "payment", protocol: "onchain", transactionType: "payment", address, amount, memo, isSendAll })
 
     if (amount <= 0) {
@@ -168,11 +168,13 @@ export const OnChainMixin = (superclass) => class extends superclass {
       return lockExtendOrThrow({lock, logger: onchainLogger}, async () => {
 
         try {
+          // Solved? deleting node_modules removed the error...
           // TODO: How to add 'is_send_all' parameter? Getting error: "is not assignable to parameter of type 'SendToChainAddressArgs'"
           // ({ id } = await sendToChainAddress({ address, is_send_all: true, lnd, tokens: amount }))
-          ({ id } = await sendToChainAddress({ address, lnd, tokens: amount }))
+          const is_send_all = isSendAll ? true : false;
+          ({ id } = await sendToChainAddress({ address, is_send_all, lnd, tokens: amount }))
         } catch (err) {
-          onchainLogger.error({ err, address, tokens: amount, success: false }, "Impossible to sendToChainAddress")
+          onchainLogger.error({ err, address, isSendAll, tokens: amount, success: false }, "Impossible to sendToChainAddress")
           return false
         }
 
