@@ -52,7 +52,8 @@ export const Levels = [1, 2]
 export interface IOnChainPayment {
   address: string,
   amount: number,
-  memo?: string
+  memo?: string,
+  isSendAll?: boolean
 }
 
 export interface ITransaction {

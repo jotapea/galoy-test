@@ -67,8 +67,8 @@ export const OnChainMixin = (superclass) => class extends superclass {
   }
 
   // amount in sats
-  async onChainPay({ address, amount, memo }: IOnChainPayment): Promise<ISuccess> {
-    let onchainLogger = this.logger.child({ topic: "payment", protocol: "onchain", transactionType: "payment", address, amount, memo })
+  async onChainPay({ address, amount, memo, isSendAll }: IOnChainPayment): Promise<ISuccess> {
+    let onchainLogger = this.logger.child({ topic: "payment", protocol: "onchain", transactionType: "payment", address, amount, memo, isSendAll })
 
     if (amount <= 0) {
       const error = "Amount can't be negative"
@@ -168,6 +168,8 @@ export const OnChainMixin = (superclass) => class extends superclass {
       return lockExtendOrThrow({lock, logger: onchainLogger}, async () => {
 
         try {
+          // TODO: How to add 'is_send_all' parameter? Getting error: "is not assignable to parameter of type 'SendToChainAddressArgs'"
+          // ({ id } = await sendToChainAddress({ address, is_send_all: true, lnd, tokens: amount }))
           ({ id } = await sendToChainAddress({ address, lnd, tokens: amount }))
         } catch (err) {
           onchainLogger.error({ err, address, tokens: amount, success: false }, "Impossible to sendToChainAddress")
