@@ -171,8 +171,7 @@ export const OnChainMixin = (superclass) => class extends superclass {
           // Solved? deleting node_modules removed the error...
           // TODO: How to add 'is_send_all' parameter? Getting error: "is not assignable to parameter of type 'SendToChainAddressArgs'"
           // ({ id } = await sendToChainAddress({ address, is_send_all: true, lnd, tokens: amount }))
-          const is_send_all = isSendAll ? true : false;
-          ({ id } = await sendToChainAddress({ address, is_send_all, lnd, tokens: amount }))
+          ({ id } = await sendToChainAddress({ address, is_send_all: isSendAll, lnd, tokens: amount }))
         } catch (err) {
           onchainLogger.error({ err, address, isSendAll, tokens: amount, success: false }, "Impossible to sendToChainAddress")
           return false
