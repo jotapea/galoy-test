@@ -138,13 +138,15 @@ export const OnChainMixin = (superclass) => class extends superclass {
 
       const { chain_balance: onChainBalance } = await getChainBalance({ lnd })
 
-      let estimatedFee = 0
       let id
 
-      const sendTo = [{ address, tokens: amount }]
-
-      // no need for getChainFeeEstimate when isSendAll
+      // only check estimatedFee when isSendAll=false
       if (!isSendAll) {
+
+        let estimatedFee
+
+        const sendTo = [{ address, tokens: amount }]
+
         try {
           ({ fee: estimatedFee } = await getChainFeeEstimate({ lnd, send_to: sendTo }))
         } catch (err) {
@@ -158,14 +160,15 @@ export const OnChainMixin = (superclass) => class extends superclass {
           // TODO: add a page to initiate the rebalancing quickly
           throw new RebalanceNeededError(undefined, {logger: onchainLogger, onChainBalance, amount, estimatedFee, sendTo, success: false})
         }
-      }
 
-      //add a flat fee on top of onchain miner fees
-      estimatedFee += this.user.withdrawFee
+        //add a flat fee on top of onchain miner fees
+        estimatedFee += this.user.withdrawFee
 
-      // case where the user doesn't have enough money
-      if (balance.total_in_BTC < amount + estimatedFee) {
-        throw new InsufficientBalanceError(undefined, {logger: onchainLogger})
+        // case where the user doesn't have enough money
+        if (balance.total_in_BTC < amount + estimatedFee) {
+          throw new InsufficientBalanceError(undefined, { logger: onchainLogger })
+        }
+
       }
 
 
