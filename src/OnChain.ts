@@ -140,6 +140,7 @@ export const OnChainMixin = (superclass) => class extends superclass {
       const { chain_balance: onChainBalance } = await getChainBalance({ lnd })
 
       let id
+      let amountToSend
 
       // only check estimatedFee when isSendAll=false
       if (!isSendAll) {
@@ -170,18 +171,29 @@ export const OnChainMixin = (superclass) => class extends superclass {
           throw new InsufficientBalanceError(undefined, { logger: onchainLogger })
         }
 
+        amountToSend = amount
+      }
+      // else when isSendAll, fees will need to be deducted from the amount
+      else {
+
+        // TODO? is this check needed?
+        // case where there is not enough money available within lnd on-chain wallet
+        if (onChainBalance < amount) {
+          // TODO: add a page to initiate the rebalancing quickly
+          throw new RebalanceNeededError(undefined, {logger: onchainLogger, amount, success: false})
+        }
+
+        amountToSend = amount - this.user.withdrawFee
       }
 
 
       return lockExtendOrThrow({lock, logger: onchainLogger}, async () => {
 
-        try {
-          // Solved? deleting node_modules removed the error...
-          // TODO: How to add 'is_send_all' parameter? Getting error: "is not assignable to parameter of type 'SendToChainAddressArgs'"
-          // ({ id } = await sendToChainAddress({ address, is_send_all: true, lnd, tokens: amount }))
-          ({ id } = await sendToChainAddress({ address, is_send_all: isSendAll, lnd, tokens: amount }))
+        // the following now use amountToSend instead of amount
+        try {          
+          ({ id } = await sendToChainAddress({ address, is_send_all: isSendAll, lnd, tokens: amountToSend }))
         } catch (err) {
-          onchainLogger.error({ err, address, isSendAll, tokens: amount, success: false }, "Impossible to sendToChainAddress")
+          onchainLogger.error({ err, address, isSendAll, tokens: amountToSend, success: false }, "Impossible to sendToChainAddress")
           return false
         }
 
@@ -196,6 +208,8 @@ export const OnChainMixin = (superclass) => class extends superclass {
         }
 
         {
+          // TODO...
+
           fee += this.user.withdrawFee
           const sats = amount + fee
           const metadata = { currency: "BTC", hash: id, type: "onchain_payment", pending: true, ...UserWallet.getCurrencyEquivalent({ sats, fee }) }
