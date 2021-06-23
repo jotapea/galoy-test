@@ -211,6 +211,7 @@ const resolvers = {
     earnCompleted: async (_, { ids }, { wallet }) => wallet.addEarn(ids),
     onchain: async (_, __, { wallet }) => ({
       getNewAddress: () => wallet.getOnChainAddress(),
+      // TODO: new isSendAll flag can be received here
       pay: ({ address, amount, memo }) => ({ success: wallet.onChainPay({ address, amount, memo }) }),
       getFee: ({ address, amount }) => wallet.getOnchainFee({ address, amount }),
     }),

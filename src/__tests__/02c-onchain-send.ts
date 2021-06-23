@@ -58,6 +58,8 @@ afterAll(async () => {
 
 const amount = 10040 // sats
 
+// TODO: onChainPay test with isSendAll=true
+
 it('Sends onchain payment successfully', async () => {
   const { address } = await createChainAddress({ format: 'p2wpkh', lnd: lndOutside1 })
 
