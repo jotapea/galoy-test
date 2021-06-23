@@ -136,6 +136,7 @@ export const OnChainMixin = (superclass) => class extends superclass {
         throw new TransactionRestrictedError(error,{logger: onchainLogger})
       }
 
+      // TODO? should onChainBalance also be checked by itself when isSendAll? (was originally checked after adding the estimatedFee)
       const { chain_balance: onChainBalance } = await getChainBalance({ lnd })
 
       let id
