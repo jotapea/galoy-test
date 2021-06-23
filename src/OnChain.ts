@@ -138,22 +138,26 @@ export const OnChainMixin = (superclass) => class extends superclass {
 
       const { chain_balance: onChainBalance } = await getChainBalance({ lnd })
 
-      let estimatedFee, id
+      let estimatedFee = 0
+      let id
 
       const sendTo = [{ address, tokens: amount }]
 
-      try {
-        ({ fee: estimatedFee } = await getChainFeeEstimate({ lnd, send_to: sendTo }))
-      } catch (err) {
-        const error = `Unable to estimate fee for on-chain transaction`
-        onchainLogger.error({ err, sendTo, success: false }, error)
-        throw new LoggedError(error)
-      }
-
-      // case where there is not enough money available within lnd on-chain wallet
-      if (onChainBalance < amount + estimatedFee) {
-        // TODO: add a page to initiate the rebalancing quickly
-        throw new RebalanceNeededError(undefined, {logger: onchainLogger, onChainBalance, amount, estimatedFee, sendTo, success: false})
+      // no need for getChainFeeEstimate when isSendAll
+      if (!isSendAll) {
+        try {
+          ({ fee: estimatedFee } = await getChainFeeEstimate({ lnd, send_to: sendTo }))
+        } catch (err) {
+          const error = `Unable to estimate fee for on-chain transaction`
+          onchainLogger.error({ err, sendTo, success: false }, error)
+          throw new LoggedError(error)
+        }
+  
+        // case where there is not enough money available within lnd on-chain wallet
+        if (onChainBalance < amount + estimatedFee) {
+          // TODO: add a page to initiate the rebalancing quickly
+          throw new RebalanceNeededError(undefined, {logger: onchainLogger, onChainBalance, amount, estimatedFee, sendTo, success: false})
+        }
       }
 
       //add a flat fee on top of onchain miner fees
