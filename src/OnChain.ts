@@ -91,6 +91,7 @@ export const OnChainMixin = (superclass) => class extends superclass {
 
       const payeeUser = await this.tentativelyGetPayeeUser({address})
 
+      // TODO? isSendAll affects this path? shows fee=0
       if (payeeUser) {
         const onchainLoggerOnUs = onchainLogger.child({onUs: true})
 
@@ -140,7 +141,7 @@ export const OnChainMixin = (superclass) => class extends superclass {
       const { chain_balance: onChainBalance } = await getChainBalance({ lnd })
 
       let id
-      let amountToSend
+      let amountToSend // for sendToChainAddress
 
       // only check estimatedFee when isSendAll=false
       if (!isSendAll) {
@@ -189,7 +190,6 @@ export const OnChainMixin = (superclass) => class extends superclass {
 
       return lockExtendOrThrow({lock, logger: onchainLogger}, async () => {
 
-        // the following now use amountToSend instead of amount
         try {          
           ({ id } = await sendToChainAddress({ address, is_send_all: isSendAll, lnd, tokens: amountToSend }))
         } catch (err) {
@@ -210,15 +210,26 @@ export const OnChainMixin = (superclass) => class extends superclass {
         const fee = transactionFee + this.user.withdrawFee;
 
         {
-          // TODO...
 
-          fee += this.user.withdrawFee
-          const sats = amount + fee
+          // fee += this.user.withdrawFee
+          // const sats = amount + fee
+
+          // TODO? is the following a correct assumption?
+          let sats; // full amount debited from account
+          if (!isSendAll) {
+            sats = amount + fee
+          }
+          // else when isSendAll, the fees are deducted from the amount
+          else {
+            sats = amount
+          }
+
+          // TODO? add isSendAll to metadata?
           const metadata = { currency: "BTC", hash: id, type: "onchain_payment", pending: true, ...UserWallet.getCurrencyEquivalent({ sats, fee }) }
 
           // TODO/FIXME refactor. add the transaction first and set the fees in a second tx.
           await MainBook.entry(memo)
-            .credit(lndAccountingPath, sats - this.user.withdrawFee, metadata)
+            .credit(lndAccountingPath, sats - this.user.withdrawFee, metadata) // amountToSend
             .credit(onchainRevenuePath, this.user.withdrawFee, metadata)
             .debit(this.user.accountPath, sats, metadata)
             .commit()
