@@ -197,15 +197,17 @@ export const OnChainMixin = (superclass) => class extends superclass {
           return false
         }
 
-        let fee
+        let transactionFee // renamed from just "fee"
         try {
           const outgoingOnchainTxns = await getOnChainTransactions({ lnd, incoming: false })
           const [{ fee: fee_ }] = outgoingOnchainTxns.filter(tx => tx.id === id)
-          fee = fee_
+          transactionFee = fee_
         } catch (err) {
           onchainLogger.fatal({err}, "impossible to get fee for onchain payment")
-          fee = 0
+          transactionFee = 0
         }
+
+        const fee = transactionFee + this.user.withdrawFee;
 
         {
           // TODO...
