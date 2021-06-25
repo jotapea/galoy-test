@@ -67,6 +67,7 @@ export const OnChainMixin = (superclass) => class extends superclass {
   }
 
   // amount in sats
+  // TODO? is this the correct method to change for the feature? if it is, should this function be modified or should another function be used when isSendAll?
   async onChainPay({ address, amount, memo, isSendAll = false }: IOnChainPayment): Promise<ISuccess> {
     let onchainLogger = this.logger.child({ topic: "payment", protocol: "onchain", transactionType: "payment", address, amount, memo, isSendAll })
 
@@ -91,7 +92,7 @@ export const OnChainMixin = (superclass) => class extends superclass {
 
       const payeeUser = await this.tentativelyGetPayeeUser({address})
 
-      // TODO? isSendAll affects this path? shows fee=0
+      /// TODO? isSendAll affects this path? shows fee=0
       if (payeeUser) {
         const onchainLoggerOnUs = onchainLogger.child({onUs: true})
 
@@ -143,6 +144,7 @@ export const OnChainMixin = (superclass) => class extends superclass {
       let id
       let amountToSend // for sendToChainAddress
 
+      // TODO? is this a correct assumption?
       // only check estimatedFee when isSendAll=false
       if (!isSendAll) {
 
@@ -177,7 +179,7 @@ export const OnChainMixin = (superclass) => class extends superclass {
       // else when isSendAll, fees will need to be deducted from the amount
       else {
 
-        // TODO? is this check needed?
+        /// TODO? is this check needed?
         // case where there is not enough money available within lnd on-chain wallet
         if (onChainBalance < amount) {
           // TODO: add a page to initiate the rebalancing quickly
@@ -214,7 +216,7 @@ export const OnChainMixin = (superclass) => class extends superclass {
           // fee += this.user.withdrawFee
           // const sats = amount + fee
 
-          // TODO? is the following a correct assumption?
+          /// TODO? is the following a correct assumption?
           let sats; // full amount debited from account
           if (!isSendAll) {
             sats = amount + fee
