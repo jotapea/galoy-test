@@ -67,8 +67,9 @@ export const OnChainMixin = (superclass) => class extends superclass {
   }
 
   // amount in sats
-  async onChainPay({ address, amount, memo }: IOnChainPayment): Promise<ISuccess> {
-    let onchainLogger = this.logger.child({ topic: "payment", protocol: "onchain", transactionType: "payment", address, amount, memo })
+  // TODO? is this the correct method to change for the feature? if it is, should this function be modified or should another function be used when isSendAll?
+  async onChainPay({ address, amount, memo, isSendAll = false }: IOnChainPayment): Promise<ISuccess> {
+    let onchainLogger = this.logger.child({ topic: "payment", protocol: "onchain", transactionType: "payment", address, amount, memo, isSendAll })
 
     if (amount <= 0) {
       const error = "Amount can't be negative"
@@ -91,6 +92,7 @@ export const OnChainMixin = (superclass) => class extends superclass {
 
       const payeeUser = await this.tentativelyGetPayeeUser({address})
 
+      /// TODO? isSendAll affects this path? shows fee=0
       if (payeeUser) {
         const onchainLoggerOnUs = onchainLogger.child({onUs: true})
 
@@ -136,62 +138,100 @@ export const OnChainMixin = (superclass) => class extends superclass {
         throw new TransactionRestrictedError(error,{logger: onchainLogger})
       }
 
+      // TODO? should onChainBalance also be checked by itself when isSendAll? (was originally checked after adding the estimatedFee)
       const { chain_balance: onChainBalance } = await getChainBalance({ lnd })
 
-      let estimatedFee, id
+      let id
+      let amountToSend // for sendToChainAddress
 
-      const sendTo = [{ address, tokens: amount }]
+      // TODO? is this a correct assumption?
+      // only check estimatedFee when isSendAll=false
+      if (!isSendAll) {
 
-      try {
-        ({ fee: estimatedFee } = await getChainFeeEstimate({ lnd, send_to: sendTo }))
-      } catch (err) {
-        const error = `Unable to estimate fee for on-chain transaction`
-        onchainLogger.error({ err, sendTo, success: false }, error)
-        throw new LoggedError(error)
+        let estimatedFee
+
+        const sendTo = [{ address, tokens: amount }]
+
+        try {
+          ({ fee: estimatedFee } = await getChainFeeEstimate({ lnd, send_to: sendTo }))
+        } catch (err) {
+          const error = `Unable to estimate fee for on-chain transaction`
+          onchainLogger.error({ err, sendTo, success: false }, error)
+          throw new LoggedError(error)
+        }
+  
+        // case where there is not enough money available within lnd on-chain wallet
+        if (onChainBalance < amount + estimatedFee) {
+          // TODO: add a page to initiate the rebalancing quickly
+          throw new RebalanceNeededError(undefined, {logger: onchainLogger, onChainBalance, amount, estimatedFee, sendTo, success: false})
+        }
+
+        //add a flat fee on top of onchain miner fees
+        estimatedFee += this.user.withdrawFee
+
+        // case where the user doesn't have enough money
+        if (balance.total_in_BTC < amount + estimatedFee) {
+          throw new InsufficientBalanceError(undefined, { logger: onchainLogger })
+        }
+
+        amountToSend = amount
       }
+      // else when isSendAll, fees will need to be deducted from the amount
+      else {
 
-      // case where there is not enough money available within lnd on-chain wallet
-      if (onChainBalance < amount + estimatedFee) {
-        // TODO: add a page to initiate the rebalancing quickly
-        throw new RebalanceNeededError(undefined, {logger: onchainLogger, onChainBalance, amount, estimatedFee, sendTo, success: false})
-      }
+        /// TODO? is this check needed?
+        // case where there is not enough money available within lnd on-chain wallet
+        if (onChainBalance < amount) {
+          // TODO: add a page to initiate the rebalancing quickly
+          throw new RebalanceNeededError(undefined, {logger: onchainLogger, amount, success: false})
+        }
 
-      //add a flat fee on top of onchain miner fees
-      estimatedFee += this.user.withdrawFee
-
-      // case where the user doesn't have enough money
-      if (balance.total_in_BTC < amount + estimatedFee) {
-        throw new InsufficientBalanceError(undefined, {logger: onchainLogger})
+        amountToSend = amount - this.user.withdrawFee
       }
 
 
       return lockExtendOrThrow({lock, logger: onchainLogger}, async () => {
 
-        try {
-          ({ id } = await sendToChainAddress({ address, lnd, tokens: amount }))
+        try {          
+          ({ id } = await sendToChainAddress({ address, is_send_all: isSendAll, lnd, tokens: amountToSend }))
         } catch (err) {
-          onchainLogger.error({ err, address, tokens: amount, success: false }, "Impossible to sendToChainAddress")
+          onchainLogger.error({ err, address, isSendAll, tokens: amountToSend, success: false }, "Impossible to sendToChainAddress")
           return false
         }
 
-        let fee
+        let transactionFee // renamed from just "fee"
         try {
           const outgoingOnchainTxns = await getOnChainTransactions({ lnd, incoming: false })
           const [{ fee: fee_ }] = outgoingOnchainTxns.filter(tx => tx.id === id)
-          fee = fee_
+          transactionFee = fee_
         } catch (err) {
           onchainLogger.fatal({err}, "impossible to get fee for onchain payment")
-          fee = 0
+          transactionFee = 0
         }
 
+        const fee = transactionFee + this.user.withdrawFee;
+
         {
-          fee += this.user.withdrawFee
-          const sats = amount + fee
+
+          // fee += this.user.withdrawFee
+          // const sats = amount + fee
+
+          /// TODO? is the following a correct assumption?
+          let sats; // full amount debited from account
+          if (!isSendAll) {
+            sats = amount + fee
+          }
+          // else when isSendAll, the fees are deducted from the amount
+          else {
+            sats = amount
+          }
+
+          // TODO? add isSendAll to metadata?
           const metadata = { currency: "BTC", hash: id, type: "onchain_payment", pending: true, ...UserWallet.getCurrencyEquivalent({ sats, fee }) }
 
           // TODO/FIXME refactor. add the transaction first and set the fees in a second tx.
           await MainBook.entry(memo)
-            .credit(lndAccountingPath, sats - this.user.withdrawFee, metadata)
+            .credit(lndAccountingPath, sats - this.user.withdrawFee, metadata) // amountToSend
             .credit(onchainRevenuePath, this.user.withdrawFee, metadata)
             .debit(this.user.accountPath, sats, metadata)
             .commit()
